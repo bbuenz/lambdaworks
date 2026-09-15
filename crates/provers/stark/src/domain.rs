@@ -89,9 +89,8 @@ impl<F: IsFFTField> Domain<F> {
     where
         A: AIR<Field = F>,
     {
-        Self::eager(air).expect(
-            "trace_length must be a positive power of two and roots of unity must exist",
-        )
+        Self::eager(air)
+            .expect("trace_length must be a positive power of two and roots of unity must exist")
     }
 
     fn from_scalars(
@@ -229,7 +228,10 @@ mod tests {
             a1: FE::one(),
         };
         let air = FibonacciAIR::<Stark252PrimeField>::new(16, &pub_inputs, &options);
-        (new_domain(&air).unwrap(), new_verifier_domain(&air).unwrap())
+        (
+            new_domain(&air).unwrap(),
+            new_verifier_domain(&air).unwrap(),
+        )
     }
 
     /// The trace roots of unity, which no longer live in the domain.
@@ -275,10 +277,8 @@ mod tests {
         let (eager, lazy) = domains();
         let mut scan_transcript = StoneProverTranscript::new(b"z");
         let mut fast_transcript = StoneProverTranscript::new(b"z");
-        let scanned = scan_transcript.sample_z_ood(
-            &eager.lde_roots_of_unity_coset,
-            &trace_roots(&eager),
-        );
+        let scanned =
+            scan_transcript.sample_z_ood(&eager.lde_roots_of_unity_coset, &trace_roots(&eager));
         let fast = lazy.sample_z_ood(&mut fast_transcript);
         assert_eq!(scanned, fast);
     }

@@ -1330,6 +1330,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "blake3", ignore = "Stone vectors assume Keccak commitments")]
     fn stone_compatibility_case_1_proof_is_valid() {
         let (proof, air, _options, seed) = proof_parts_stone_compatibility_case_1();
         assert!(Verifier::verify(
@@ -1340,6 +1341,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "blake3", ignore = "Stone vectors assume Keccak commitments")]
     fn stone_compatibility_case_1_trace_commitment() {
         let proof = stone_compatibility_case_1_proof();
 
@@ -1350,6 +1352,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "blake3", ignore = "Stone vectors assume Keccak commitments")]
     fn stone_compatibility_case_1_composition_poly_challenges() {
         let challenges = stone_compatibility_case_1_challenges();
 
@@ -1367,6 +1370,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "blake3", ignore = "Stone vectors assume Keccak commitments")]
     fn stone_compatibility_case_1_composition_poly_commitment() {
         let proof = stone_compatibility_case_1_proof();
         // Composition polynomial commitment
@@ -1377,6 +1381,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "blake3", ignore = "Stone vectors assume Keccak commitments")]
     fn stone_compatibility_case_1_out_of_domain_challenge() {
         let challenges = stone_compatibility_case_1_challenges();
         assert_eq!(
@@ -1388,6 +1393,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "blake3", ignore = "Stone vectors assume Keccak commitments")]
     fn stone_compatibility_case_1_out_of_domain_trace_evaluation() {
         let proof = stone_compatibility_case_1_proof();
 
@@ -1418,6 +1424,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "blake3", ignore = "Stone vectors assume Keccak commitments")]
     fn stone_compatibility_case_1_out_of_domain_composition_poly_evaluation() {
         let proof = stone_compatibility_case_1_proof();
 
@@ -1430,6 +1437,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "blake3", ignore = "Stone vectors assume Keccak commitments")]
     fn stone_compatibility_case_1_deep_composition_poly_challenges() {
         let challenges = stone_compatibility_case_1_challenges();
 
@@ -1450,6 +1458,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "blake3", ignore = "Stone vectors assume Keccak commitments")]
     fn stone_compatibility_case_1_fri_commit_phase_challenge_0() {
         let challenges = stone_compatibility_case_1_challenges();
 
@@ -1463,6 +1472,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "blake3", ignore = "Stone vectors assume Keccak commitments")]
     fn stone_compatibility_case_1_fri_commit_phase_layer_1_commitment() {
         let proof = stone_compatibility_case_1_proof();
 
@@ -1474,6 +1484,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "blake3", ignore = "Stone vectors assume Keccak commitments")]
     fn stone_compatibility_case_1_fri_commit_phase_challenge_1() {
         let challenges = stone_compatibility_case_1_challenges();
         assert_eq!(
@@ -1485,6 +1496,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "blake3", ignore = "Stone vectors assume Keccak commitments")]
     fn stone_compatibility_case_1_fri_commit_phase_last_value() {
         let proof = stone_compatibility_case_1_proof();
 
@@ -1497,12 +1509,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "blake3", ignore = "Stone vectors assume Keccak commitments")]
     fn stone_compatibility_case_1_fri_query_iota_challenge() {
         let challenges = stone_compatibility_case_1_challenges();
         assert_eq!(challenges.iotas[0], 1);
     }
 
     #[test]
+    #[cfg_attr(feature = "blake3", ignore = "Stone vectors assume Keccak commitments")]
     fn stone_compatibility_case_1_fri_query_phase_trace_openings() {
         let proof = stone_compatibility_case_1_proof();
 
@@ -1540,6 +1554,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "blake3", ignore = "Stone vectors assume Keccak commitments")]
     fn stone_compatibility_case_1_fri_query_phase_trace_terms_authentication_path() {
         let proof = stone_compatibility_case_1_proof();
 
@@ -1575,6 +1590,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "blake3", ignore = "Stone vectors assume Keccak commitments")]
     fn stone_compatibility_case_1_fri_query_phase_composition_poly_openings() {
         let proof = stone_compatibility_case_1_proof();
 
@@ -1595,6 +1611,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "blake3", ignore = "Stone vectors assume Keccak commitments")]
     fn stone_compatibility_case_1_fri_query_phase_composition_poly_authentication_path() {
         let proof = stone_compatibility_case_1_proof();
 
@@ -1630,6 +1647,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "blake3", ignore = "Stone vectors assume Keccak commitments")]
     fn stone_compatibility_case_1_fri_query_phase_query_lengths() {
         let proof = stone_compatibility_case_1_proof();
 
@@ -1644,6 +1662,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "blake3", ignore = "Stone vectors assume Keccak commitments")]
     fn stone_compatibility_case_1_fri_query_phase_layer_1_evaluation_symmetric() {
         let proof = stone_compatibility_case_1_proof();
 
@@ -1656,6 +1675,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "blake3", ignore = "Stone vectors assume Keccak commitments")]
     fn stone_compatibility_case_1_fri_query_phase_layer_1_authentication_path() {
         let proof = stone_compatibility_case_1_proof();
 
@@ -1730,6 +1750,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "blake3", ignore = "Stone vectors assume Keccak commitments")]
     fn stone_compatibility_case_2_trace_commitment() {
         let proof = stone_compatibility_case_2_proof();
 
@@ -1740,12 +1761,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "blake3", ignore = "Stone vectors assume Keccak commitments")]
     fn stone_compatibility_case_2_fri_query_iota_challenge() {
         let challenges = stone_compatibility_case_2_challenges();
         assert_eq!(challenges.iotas[0], 4239);
     }
 
     #[test]
+    #[cfg_attr(feature = "blake3", ignore = "Stone vectors assume Keccak commitments")]
     fn stone_compatibility_case_2_fri_query_phase_layer_7_evaluation_symmetric() {
         let proof = stone_compatibility_case_2_proof();
 
@@ -1758,6 +1781,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "blake3", ignore = "Stone vectors assume Keccak commitments")]
     fn stone_compatibility_case_2_fri_query_phase_layer_8_authentication_path() {
         let proof = stone_compatibility_case_2_proof();
 

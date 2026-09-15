@@ -53,6 +53,7 @@ wasm-bindgen-test = "0.3.0"
 test_fiat_shamir = []
 instruments = []                                                     # This enables timing prints in prover and verifier
 parallel = ["dep:rayon", "lambdaworks-crypto/parallel"]
+blake3 = ["lambdaworks-crypto/blake3"]                                # BLAKE3 Merkle trees instead of Keccak (not Stone-compatible)
 wasm = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen", "dep:web-sys"]
 winter_compatibility = ["miden-core"]
 dhat-heap = ["dep:dhat"]                                             # Enable dhat heap profiling

@@ -1,3 +1,6 @@
+/// BLAKE3 backends with batched (SIMD) leaf and level hashing
+#[cfg(feature = "blake3")]
+pub mod blake3;
 pub mod field_element;
 pub mod field_element_vector;
 pub mod poseidon2;
