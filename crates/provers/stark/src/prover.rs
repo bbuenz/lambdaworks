@@ -1044,10 +1044,7 @@ pub trait IsStarkProver<
         let timer3 = Instant::now();
 
         // <<<< Receive challenge: z
-        let z = transcript.sample_z_ood(
-            &domain.lde_roots_of_unity_coset,
-            &domain.trace_roots_of_unity,
-        );
+        let z = domain.sample_z_ood(transcript);
 
         let round_3_result = Self::round_3_evaluate_polynomials_in_out_of_domain_element(
             air,

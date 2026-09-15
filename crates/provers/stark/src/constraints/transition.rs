@@ -112,7 +112,7 @@ where
     #[allow(unstable_name_collisions)]
     fn zerofier_evaluations_on_extended_domain(&self, domain: &Domain<F>) -> Vec<FieldElement<F>> {
         let blowup_factor = domain.blowup_factor;
-        let trace_length = domain.trace_roots_of_unity.len();
+        let trace_length = domain.interpolation_domain_size;
         let trace_primitive_root = &domain.trace_primitive_root;
         let coset_offset = &domain.coset_offset;
         let lde_root_order = u64::from((blowup_factor * trace_length).trailing_zeros());

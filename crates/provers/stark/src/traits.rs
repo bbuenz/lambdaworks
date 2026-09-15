@@ -392,7 +392,7 @@ pub trait AIR: Send + Sync {
 
         let constraints = self.transition_constraints();
         let blowup_factor = domain.blowup_factor;
-        let trace_length = domain.trace_roots_of_unity.len();
+        let trace_length = domain.interpolation_domain_size;
         let trace_primitive_root = &domain.trace_primitive_root;
         let coset_offset = &domain.coset_offset;
         let lde_root_order = u64::from((blowup_factor * trace_length).trailing_zeros());

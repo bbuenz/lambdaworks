@@ -7,7 +7,7 @@ use super::{
     traits::{TransitionEvaluationContext, AIR},
 };
 use crate::{
-    config::Commitment, domain::new_domain, lookup::types::logup_table_offset,
+    config::Commitment, domain::new_verifier_domain, lookup::types::logup_table_offset,
     proof::stark::DeepPolynomialOpening,
 };
 use lambdaworks_crypto::{
@@ -85,7 +85,7 @@ pub trait IsStarkVerifier<
         domain: &Domain<Field>,
         transcript: &mut impl IsStarkTranscript<FieldExtension, Field>,
     ) -> Vec<usize> {
-        let domain_size = domain.lde_roots_of_unity_coset.len() as u64;
+        let domain_size = domain.lde_domain_size() as u64;
         (0..number_of_queries)
             .map(|_| (transcript.sample_u64(domain_size >> 1)) as usize)
             .collect::<Vec<usize>>()
@@ -143,10 +143,7 @@ pub trait IsStarkVerifier<
         // ===================================
 
         // >>>> Send challenge: z
-        let z = transcript.sample_z_ood(
-            &domain.lde_roots_of_unity_coset,
-            &domain.trace_roots_of_unity,
-        );
+        let z = domain.sample_z_ood(transcript);
 
         // <<<< Receive values: tⱼ(zgᵏ)
         let trace_ood_evaluations_columns = proof.trace_ood_evaluations.columns();
@@ -397,9 +394,7 @@ pub trait IsStarkVerifier<
         iota: usize,
         domain: &Domain<Field>,
     ) -> FieldElement<Field> {
-        domain.lde_roots_of_unity_coset
-            [reverse_index(iota * 2, domain.lde_roots_of_unity_coset.len() as u64)]
-        .clone()
+        domain.lde_point(reverse_index(iota * 2, domain.lde_domain_size() as u64))
     }
 
     /// Returns the symmetric field element element of the domain `domain` corresponding to the given FRI query index challenge `iota`.
@@ -407,9 +402,7 @@ pub trait IsStarkVerifier<
         iota: usize,
         domain: &Domain<Field>,
     ) -> FieldElement<Field> {
-        domain.lde_roots_of_unity_coset
-            [reverse_index(iota * 2 + 1, domain.lde_roots_of_unity_coset.len() as u64)]
-        .clone()
+        domain.lde_point(reverse_index(iota * 2 + 1, domain.lde_domain_size() as u64))
     }
 
     /// Verifies the validity of the opening proof.
@@ -780,7 +773,7 @@ pub trait IsStarkVerifier<
         #[cfg(feature = "instruments")]
         let timer1 = Instant::now();
 
-        let domain = match new_domain(air) {
+        let domain = match new_verifier_domain(air) {
             Ok(d) => d,
             Err(_) => {
                 log::error!("Failed to create domain");
