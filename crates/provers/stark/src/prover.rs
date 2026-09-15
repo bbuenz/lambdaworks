@@ -194,6 +194,47 @@ pub struct Round4<F: IsSubFieldOf<E>, E: IsField> {
 /// Returns the evaluations of the polynomial `p` over the lde domain defined by the given
 /// `blowup_factor`, `domain_size` and `offset`. The number of evaluations returned is `domain_size
 /// * blowup_factor`. The domain generator used is the one given by the implementation of `F` as `IsFFTField`.
+/// Evaluates `p` (degree below the trace length) on the LDE domain as `blowup_factor`
+/// independent `N`-point transforms, one per coset `offset * g_{bN}^i * <g_N>`, instead of
+/// one zero-padded `bN`-point transform: about a tenth fewer butterflies, a working set
+/// of `N` elements, and the twiddles are shared through the [`Domain`]. Output order is
+/// the natural order of the LDE domain, identical to [`evaluate_polynomial_on_lde_domain`].
+pub fn evaluate_on_lde_domain_cosets<F, E>(
+    p: &Polynomial<FieldElement<E>>,
+    domain: &Domain<F>,
+) -> Result<Vec<FieldElement<E>>, FFTError>
+where
+    F: IsFFTField + IsSubFieldOf<E>,
+    E: IsField,
+{
+    let n = domain.interpolation_domain_size;
+    let blowup = domain.blowup_factor;
+    if p.coeff_len() > n || domain.lde_twiddles.is_empty() {
+        return evaluate_polynomial_on_lde_domain(p, blowup, n, &domain.coset_offset);
+    }
+    let mut out = vec![FieldElement::<E>::zero(); n * blowup];
+    let mut scaled = vec![FieldElement::<E>::zero(); n];
+    let coefficients = p.coefficients();
+    for i in 0..blowup {
+        // p(shift * x) on the N-th roots of unity, shift = offset * g_{bN}^i
+        let shift = &domain.coset_offset * domain.lde_primitive_root.pow(i);
+        let mut power = FieldElement::<F>::one();
+        for (m, c) in coefficients.iter().enumerate() {
+            let power_e: FieldElement<E> = power.clone().to_extension();
+            scaled[m] = c * &power_e;
+            power = &power * &shift;
+        }
+        for slot in scaled.iter_mut().skip(coefficients.len()) {
+            *slot = FieldElement::zero();
+        }
+        let evals = lambdaworks_math::fft::cpu::ops::fft(&scaled, &domain.lde_twiddles)?;
+        for (j, v) in evals.into_iter().enumerate() {
+            out[j * blowup + i] = v;
+        }
+    }
+    Ok(out)
+}
+
 pub fn evaluate_polynomial_on_lde_domain<F, E>(
     p: &Polynomial<FieldElement<E>>,
     blowup_factor: usize,
@@ -391,14 +432,7 @@ pub trait IsStarkProver<
         let trace_polys_iter = trace_polys.par_iter();
 
         trace_polys_iter
-            .map(|poly| {
-                evaluate_polynomial_on_lde_domain(
-                    poly,
-                    domain.blowup_factor,
-                    domain.interpolation_domain_size,
-                    &domain.coset_offset,
-                )
-            })
+            .map(|poly| evaluate_on_lde_domain_cosets(poly, domain))
             .collect::<Result<Vec<Vec<FieldElement<E>>>, FFTError>>()
     }
 
@@ -566,14 +600,7 @@ pub trait IsStarkProver<
 
         let lde_composition_poly_parts_evaluations: Vec<_> = composition_poly_parts
             .iter()
-            .map(|part| {
-                evaluate_polynomial_on_lde_domain(
-                    part,
-                    domain.blowup_factor,
-                    domain.interpolation_domain_size,
-                    &domain.coset_offset,
-                )
-            })
+            .map(|part| evaluate_on_lde_domain_cosets(part, domain))
             .collect::<Result<Vec<_>, _>>()?;
 
         #[cfg(feature = "instruments")]

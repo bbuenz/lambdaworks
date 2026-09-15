@@ -50,6 +50,7 @@
 
 use std::collections::HashMap;
 use std::ops::Div;
+use std::sync::Arc;
 
 use lambdaworks_crypto::fiat_shamir::is_transcript::IsStarkTranscript;
 use lambdaworks_math::{
@@ -148,43 +149,44 @@ fn compute_end_exemptions_evals<F: IsFFTField>(
     coset_offset: &FieldElement<F>,
     interpolation_domain_size: usize,
 ) -> Vec<FieldElement<F>> {
-    use crate::prover::evaluate_polynomial_on_lde_domain;
-
-    let end_exemptions_poly =
-        compute_end_exemptions_poly(end_exemptions, period, trace_primitive_root, trace_length);
-    evaluate_polynomial_on_lde_domain(
-        &end_exemptions_poly,
-        blowup_factor,
-        interpolation_domain_size,
-        coset_offset,
-    )
-    .expect("failed to evaluate end exemptions polynomial on LDE domain")
-}
-
-/// Compute the end exemptions polynomial
-fn compute_end_exemptions_poly<F: IsFFTField>(
-    end_exemptions: usize,
-    period: usize,
-    trace_primitive_root: &FieldElement<F>,
-    trace_length: usize,
-) -> Polynomial<FieldElement<F>> {
-    let one_poly = Polynomial::new_monomial(FieldElement::<F>::one(), 0);
+    // The end-exemption polynomial has degree `end_exemptions` (at most a handful), so it
+    // is evaluated point by point on the LDE coset instead of through a zero-padded
+    // 4N-point FFT: `end_exemptions` multiplications per point.
+    let lde_size = interpolation_domain_size * blowup_factor;
     if end_exemptions == 0 {
-        return one_poly;
+        return vec![FieldElement::<F>::one(); lde_size];
     }
-    (1..=end_exemptions)
+    let roots: Vec<FieldElement<F>> = (1..=end_exemptions)
         .map(|exemption| trace_primitive_root.pow(trace_length - exemption * period))
-        .fold(one_poly, |acc, offset| {
-            acc * (Polynomial::new_monomial(FieldElement::<F>::one(), 1) - offset)
-        })
+        .collect();
+    let lde_root = F::get_primitive_root_of_unity(lde_size.trailing_zeros() as u64)
+        .expect("LDE primitive root of unity must exist");
+    let evaluate_chunk = |start: usize, out: &mut [FieldElement<F>]| {
+        let mut x = coset_offset * lde_root.pow(start as u64);
+        for value in out.iter_mut() {
+            let mut acc = &x - &roots[0];
+            for root in &roots[1..] {
+                acc *= &x - root;
+            }
+            *value = acc;
+            x = &x * &lde_root;
+        }
+    };
+    let mut evals = vec![FieldElement::<F>::zero(); lde_size];
+    #[cfg(feature = "parallel")]
+    {
+        use rayon::prelude::*;
+        const CHUNK: usize = 1 << 14;
+        evals
+            .par_chunks_mut(CHUNK)
+            .enumerate()
+            .for_each(|(c, chunk)| evaluate_chunk(c * CHUNK, chunk));
+    }
+    #[cfg(not(feature = "parallel"))]
+    evaluate_chunk(0, &mut evals);
+    evals
 }
 
-/// This enum is necessary because, while both the prover and verifier perform the same operations
-///  to compute transition constraints, their frames differ.
-///  The prover uses a frame containing elements from both the base field and its extension
-/// (common when working with small fields and challengers in the extension).
-/// In contrast, the verifier, lacking access to the trace and relying solely on evaluations at the challengers,
-/// works with a frame that contains only elements from the extension.
 pub enum TransitionEvaluationContext<'a, F, E>
 where
     F: IsSubFieldOf<E>,
@@ -383,10 +385,14 @@ pub trait AIR: Send + Sync {
         &self,
     ) -> &Vec<Box<dyn TransitionConstraint<Self::Field, Self::FieldExtension>>>;
 
+    /// Zerofier evaluations on the LDE domain, one entry per transition constraint.
+    /// Constraints with the same (period, offset, exemptions) share one vector, so the
+    /// entries are reference counted instead of cloned: at `T = 2^22` a clone per
+    /// constraint would cost several gigabytes.
     fn transition_zerofier_evaluations(
         &self,
         domain: &Domain<Self::Field>,
-    ) -> Vec<Vec<FieldElement<Self::Field>>> {
+    ) -> Vec<Arc<Vec<FieldElement<Self::Field>>>> {
         #[cfg(feature = "parallel")]
         use rayon::prelude::*;
 
@@ -504,9 +510,14 @@ pub trait AIR: Send + Sync {
                 .collect();
 
         // Step 4: Build final zerofiers by combining base + end_exemptions
-        let mut evals = vec![Vec::new(); self.num_transition_constraints()];
-        let mut full_zerofier_cache: HashMap<ZerofierGroupKey, Vec<FieldElement<Self::Field>>> =
-            HashMap::new();
+        let mut evals: Vec<Arc<Vec<FieldElement<Self::Field>>>> = (0..self
+            .num_transition_constraints())
+            .map(|_| Arc::new(Vec::new()))
+            .collect();
+        let mut full_zerofier_cache: HashMap<
+            ZerofierGroupKey,
+            Arc<Vec<FieldElement<Self::Field>>>,
+        > = HashMap::new();
 
         for c in constraints.iter() {
             let period = c.period();
@@ -525,7 +536,7 @@ pub trait AIR: Send + Sync {
 
             // Check if we already have the full zerofier cached
             if let Some(cached) = full_zerofier_cache.get(&full_key) {
-                evals[c.constraint_idx()] = cached.clone();
+                evals[c.constraint_idx()] = Arc::clone(cached);
                 continue;
             }
 
@@ -550,11 +561,12 @@ pub trait AIR: Send + Sync {
                 .cycle()
                 .take(end_exemptions_evals.len());
 
-            let final_zerofier: Vec<_> = std::iter::zip(cycled_base, end_exemptions_evals.iter())
-                .map(|(base, exemption)| base * exemption)
-                .collect();
-
-            full_zerofier_cache.insert(full_key, final_zerofier.clone());
+            let final_zerofier: Arc<Vec<_>> = Arc::new(
+                std::iter::zip(cycled_base, end_exemptions_evals.iter())
+                    .map(|(base, exemption)| base * exemption)
+                    .collect(),
+            );
+            full_zerofier_cache.insert(full_key, Arc::clone(&final_zerofier));
             evals[c.constraint_idx()] = final_zerofier;
         }
 

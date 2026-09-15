@@ -1,6 +1,21 @@
 #[cfg(feature = "parallel")]
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+#[cfg(not(feature = "blake3"))]
 use sha3::{Digest, Keccak256};
+
+/// The grinding hash: Keccak-256 by default (Stone-compatible); a single BLAKE3
+/// compression under the `blake3` feature, about four times cheaper per attempt.
+#[inline(always)]
+fn digest32(data: &[u8]) -> [u8; 32] {
+    #[cfg(feature = "blake3")]
+    {
+        *blake3::hash(data).as_bytes()
+    }
+    #[cfg(not(feature = "blake3"))]
+    {
+        Keccak256::digest(data).into()
+    }
+}
 
 const PREFIX: [u8; 8] = [0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xed];
 
@@ -84,7 +99,7 @@ fn is_valid_nonce_for_inner_hash(inner_hash: &[u8; 32], candidate_nonce: u64, li
     data[..32].copy_from_slice(inner_hash);
     data[32..].copy_from_slice(&candidate_nonce.to_be_bytes());
 
-    let digest = Keccak256::digest(data);
+    let digest = digest32(&data);
 
     let seed_head = u64::from_be_bytes(
         digest[..8]
@@ -103,10 +118,7 @@ fn get_inner_hash(seed: &[u8; 32], grinding_factor: u8) -> [u8; 32] {
     inner_data[8..40].copy_from_slice(seed);
     inner_data[40] = grinding_factor;
 
-    let digest = Keccak256::digest(inner_data);
-    digest[..32]
-        .try_into()
-        .expect("Keccak256 digest is exactly 32 bytes")
+    digest32(&inner_data)
 }
 
 #[cfg(test)]
@@ -140,6 +152,10 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(
+        feature = "blake3",
+        ignore = "nonce fixed for the Keccak grinding hash"
+    )]
     fn test_is_valid_nonce_grinding_factor_10() {
         let seed = [
             37, 68, 26, 150, 139, 142, 66, 175, 33, 47, 199, 160, 9, 109, 79, 234, 135, 254, 39,
@@ -151,6 +167,10 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(
+        feature = "blake3",
+        ignore = "nonce fixed for the Keccak grinding hash"
+    )]
     fn test_is_valid_nonce_grinding_factor_20() {
         let seed = [
             37, 68, 26, 150, 139, 142, 66, 175, 33, 47, 199, 160, 9, 109, 79, 234, 135, 254, 39,
@@ -176,6 +196,10 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(
+        feature = "blake3",
+        ignore = "nonce fixed for the Keccak grinding hash"
+    )]
     fn test_is_valid_nonce_grinding_factor_30() {
         let seed = [
             37, 68, 26, 150, 139, 142, 66, 175, 33, 47, 199, 160, 9, 109, 79, 234, 135, 254, 39,
@@ -187,6 +211,10 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(
+        feature = "blake3",
+        ignore = "nonce fixed for the Keccak grinding hash"
+    )]
     fn test_is_valid_nonce_grinding_factor_33() {
         let seed = [
             37, 68, 26, 150, 139, 142, 66, 175, 33, 47, 199, 160, 9, 109, 79, 234, 135, 254, 39,

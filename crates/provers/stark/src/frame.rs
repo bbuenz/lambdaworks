@@ -54,6 +54,32 @@ impl<'t, F: IsSubFieldOf<E>, E: IsField> Frame<'t, F, E> {
         Frame::new(lde_steps)
     }
 
+    /// Refill this frame with the rows for `row`, reusing the allocations of a frame
+    /// previously built by [`Frame::read_from_lde`] on the same table.
+    pub fn refill_from_lde(
+        &mut self,
+        lde_trace: &'t LDETraceTable<F, E>,
+        row: usize,
+        offsets: &[usize],
+    ) {
+        let blowup_factor = lde_trace.blowup_factor;
+        let num_rows = lde_trace.num_rows();
+        let step_size = lde_trace.lde_step_size;
+        self.steps
+            .resize_with(offsets.len(), || TableView::new(Vec::new(), Vec::new()));
+        for (view, offset) in self.steps.iter_mut().zip(offsets) {
+            view.data.clear();
+            view.aux_data.clear();
+            let initial_step_row = row + offset * step_size;
+            for step_row in (initial_step_row..initial_step_row + step_size).step_by(blowup_factor)
+            {
+                let step_row_idx = step_row % num_rows;
+                view.data.push(lde_trace.get_main_row(step_row_idx));
+                view.aux_data.push(lde_trace.get_aux_row(step_row_idx));
+            }
+        }
+    }
+
     pub fn read_step_from_lde(
         lde_trace: &'t LDETraceTable<F, E>,
         step: usize,

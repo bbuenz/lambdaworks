@@ -206,98 +206,92 @@ where
         #[cfg(feature = "instruments")]
         let timer = Instant::now();
 
-        #[cfg(feature = "parallel")]
-        let evaluations_t = {
-            let boundary_evaluation = boundary_evaluation.into_par_iter();
-            let evaluations_t_iter = (0..domain.lde_roots_of_unity_coset.len()).into_par_iter();
-
-            evaluations_t_iter
-                .zip(boundary_evaluation)
-                .map(|(i, boundary)| {
-                    let frame =
-                        Frame::read_from_lde(lde_trace, i, &air.context().transition_offsets);
-
-                    // Collect periodic values for this index
-                    let periodic_values: Vec<_> = lde_periodic_columns
-                        .iter()
-                        .map(|col| col[i].clone())
-                        .collect();
-
-                    let transition_evaluation_context = TransitionEvaluationContext::new_prover(
-                        &frame,
-                        &periodic_values,
-                        rap_challenges,
-                        &self.logup_table_offset,
-                    );
-                    let evaluations_transition =
-                        air.compute_transition(&transition_evaluation_context);
-
-                    // Accumulate transition constraints
-                    let acc_transition = itertools::izip!(
-                        evaluations_transition,
-                        &zerofiers_evals,
-                        transition_coefficients
-                    )
-                    .fold(
-                        FieldElement::zero(),
-                        |acc, (eval, zerof_eval, beta)| {
-                            let wrapped_idx = i % zerof_eval.len();
-                            acc + &zerof_eval[wrapped_idx] * eval * beta
-                        },
-                    );
-
-                    acc_transition + boundary
+        let offsets = &air.context().transition_offsets;
+        let num_constraints = air.num_transition_constraints();
+        let num_periodic = lde_periodic_columns.len();
+        // Constraints sharing a zerofier are summed first, so each row costs one
+        // multiplication per constraint plus one per distinct zerofier.
+        let mut zerofier_groups: Vec<(&Vec<FieldElement<Field>>, Vec<usize>)> = Vec::new();
+        for (c, z) in zerofiers_evals.iter().enumerate() {
+            match zerofier_groups
+                .iter_mut()
+                .find(|(g, _)| core::ptr::eq(*g as *const _, &**z as *const _))
+            {
+                Some((_, members)) => members.push(c),
+                None => zerofier_groups.push((&**z, vec![c])),
+            }
+        }
+        let zerofier_groups = &zerofier_groups;
+        let accumulate = |i: usize, transition_buffer: &[FieldElement<FieldExtension>]| {
+            zerofier_groups
+                .iter()
+                .fold(FieldElement::zero(), |acc, (zerofier, members)| {
+                    let group_sum = members.iter().fold(FieldElement::zero(), |sum, &c| {
+                        sum + &transition_buffer[c] * &transition_coefficients[c]
+                    });
+                    acc + &zerofier[i % zerofier.len()] * group_sum
                 })
-                .collect()
         };
 
+        #[cfg(feature = "parallel")]
+        let evaluations_t: Vec<FieldElement<FieldExtension>> = {
+            (0..domain.lde_roots_of_unity_coset.len())
+                .into_par_iter()
+                .zip(boundary_evaluation.into_par_iter())
+                .map_init(
+                    || {
+                        (
+                            Frame::read_from_lde(lde_trace, 0, offsets),
+                            Vec::<FieldElement<Field>>::with_capacity(num_periodic),
+                            vec![FieldElement::<FieldExtension>::zero(); num_constraints],
+                        )
+                    },
+                    |(frame, periodic_buffer, transition_buffer), (i, boundary)| {
+                        frame.refill_from_lde(lde_trace, i, offsets);
+                        periodic_buffer.clear();
+                        for col in &lde_periodic_columns {
+                            periodic_buffer.push(col[i].clone());
+                        }
+                        let transition_evaluation_context = TransitionEvaluationContext::new_prover(
+                            frame,
+                            periodic_buffer,
+                            rap_challenges,
+                            &self.logup_table_offset,
+                        );
+                        air.compute_transition_into(
+                            &transition_evaluation_context,
+                            transition_buffer,
+                        );
+                        accumulate(i, transition_buffer) + boundary
+                    },
+                )
+                .collect()
+        };
         #[cfg(not(feature = "parallel"))]
         let evaluations_t = {
-            // Pre-allocate reusable buffers for the sequential case
-            let num_periodic_cols = lde_periodic_columns.len();
+            let mut frame = Frame::read_from_lde(lde_trace, 0, offsets);
             let mut periodic_values_buffer: Vec<FieldElement<Field>> =
-                Vec::with_capacity(num_periodic_cols);
+                Vec::with_capacity(num_periodic);
             let mut transition_buffer: Vec<FieldElement<FieldExtension>> =
-                vec![FieldElement::zero(); air.num_transition_constraints()];
-
+                vec![FieldElement::zero(); num_constraints];
             let mut result = Vec::with_capacity(domain.lde_roots_of_unity_coset.len());
-
             for (i, boundary) in boundary_evaluation.into_iter().enumerate() {
-                let frame = Frame::read_from_lde(lde_trace, i, &air.context().transition_offsets);
-
-                // Reuse periodic values buffer - clear and refill
+                frame.refill_from_lde(lde_trace, i, offsets);
                 periodic_values_buffer.clear();
                 for col in &lde_periodic_columns {
                     periodic_values_buffer.push(col[i].clone());
                 }
-
                 let transition_evaluation_context = TransitionEvaluationContext::new_prover(
                     &frame,
                     &periodic_values_buffer,
                     rap_challenges,
                     &self.logup_table_offset,
                 );
-
-                // Use buffer-reuse variant to avoid allocation
                 air.compute_transition_into(&transition_evaluation_context, &mut transition_buffer);
-
                 #[cfg(debug_assertions)]
                 transition_evaluations.push(transition_buffer.clone());
-
-                // Accumulate transition constraints
-                let acc_transition = itertools::izip!(
-                    &transition_buffer,
-                    &zerofiers_evals,
-                    transition_coefficients
-                )
-                .fold(FieldElement::zero(), |acc, (eval, zerof_eval, beta)| {
-                    let wrapped_idx = i % zerof_eval.len();
-                    acc + &zerof_eval[wrapped_idx] * eval * beta
-                });
-
-                result.push(acc_transition + boundary);
+                result.push(accumulate(i, &transition_buffer) + boundary);
             }
-
             result
         };
 

@@ -24,7 +24,10 @@ use blake3::hazmat::{merge_subtrees_non_root, HasherExt, Mode};
 use blake3::platform::Platform;
 use blake3::IncrementCounter;
 use lambdaworks_math::{
-    field::{element::FieldElement, traits::IsField},
+    field::{
+        element::FieldElement, fields::fft_friendly::stark_252_prime_field::Stark252PrimeField,
+        traits::IsField,
+    },
     traits::AsBytes,
 };
 #[cfg(feature = "parallel")]
@@ -130,15 +133,41 @@ fn hash_leaves_batched(data: &[u8], leaf_len: usize, out: &mut [Node]) -> bool {
     dispatch!(64, 128, 192, 256, 320, 384, 448, 512, 576, 640, 704, 768, 832, 896, 960, 1024)
 }
 
-/// Serialise a leaf exactly as the scalar definition hashes it.
-fn leaf_bytes<F: IsField>(leaf: &[FieldElement<F>]) -> Vec<u8>
+/// Append the bytes of a leaf, exactly as `AsBytes` encodes each element. For the
+/// STARK-252 field the limbs are written directly (`as_bytes` is the big-endian limb
+/// encoding of the internal representation) to avoid one allocation per element.
+fn write_leaf<F>(leaf: &[FieldElement<F>], out: &mut Vec<u8>)
 where
+    F: IsField,
+    FieldElement<F>: AsBytes,
+{
+    if core::any::type_name::<F>() == core::any::type_name::<Stark252PrimeField>()
+        && core::mem::size_of::<FieldElement<F>>()
+            == core::mem::size_of::<FieldElement<Stark252PrimeField>>()
+    {
+        // SAFETY: `F` is `Stark252PrimeField` (same type name and element size), so the
+        // slice is reinterpreted as its own type.
+        let leaf: &[FieldElement<Stark252PrimeField>] =
+            unsafe { core::slice::from_raw_parts(leaf.as_ptr().cast(), leaf.len()) };
+        for element in leaf {
+            for limb in element.value().limbs {
+                out.extend_from_slice(&limb.to_be_bytes());
+            }
+        }
+    } else {
+        for element in leaf {
+            out.extend_from_slice(&element.as_bytes());
+        }
+    }
+}
+
+fn leaf_bytes<F>(leaf: &[FieldElement<F>]) -> Vec<u8>
+where
+    F: IsField,
     FieldElement<F>: AsBytes,
 {
     let mut bytes = Vec::with_capacity(leaf.len() * 32);
-    for element in leaf {
-        bytes.extend_from_slice(&element.as_bytes());
-    }
+    write_leaf(leaf, &mut bytes);
     bytes
 }
 
@@ -154,7 +183,7 @@ where
         if uniform && leaf_len > 0 && leaf_len % 64 == 0 && leaf_len <= 1024 {
             let mut data = Vec::with_capacity(leaf_len * leaves.len());
             for leaf in leaves {
-                data.extend_from_slice(&leaf_bytes(leaf));
+                write_leaf(leaf, &mut data);
             }
             if hash_leaves_batched(&data, leaf_len, outs) {
                 return;
@@ -239,7 +268,7 @@ where
     type Data = FieldElement<F>;
 
     fn hash_data(leaf: &FieldElement<F>) -> Node {
-        leaf_cv(&leaf.as_bytes())
+        leaf_cv(&leaf_bytes(core::slice::from_ref(leaf)))
     }
 
     fn hash_new_parent(left: &Node, right: &Node) -> Node {
@@ -319,6 +348,17 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn stark252_fast_leaf_encoding_matches_as_bytes() {
+        let leaf: Vec<FE> = (0..12u64)
+            .map(|c| FE::from(c * 977) * FE::from(1u64 << 40))
+            .collect();
+        let mut fast = Vec::new();
+        write_leaf(&leaf, &mut fast);
+        let slow: Vec<u8> = leaf.iter().flat_map(|e| e.as_bytes()).collect();
+        assert_eq!(fast, slow);
     }
 
     #[test]

@@ -1,9 +1,9 @@
 use lambdaworks_crypto::fiat_shamir::is_transcript::IsStarkTranscript;
 use lambdaworks_math::{
-    fft::cpu::roots_of_unity::get_powers_of_primitive_root_coset,
+    fft::cpu::roots_of_unity::{get_powers_of_primitive_root_coset, get_twiddles},
     field::{
         element::FieldElement,
-        traits::{IsFFTField, IsField, IsSubFieldOf},
+        traits::{IsFFTField, IsField, IsSubFieldOf, RootsConfig},
     },
 };
 
@@ -32,6 +32,9 @@ pub struct Domain<F: IsFFTField> {
     pub(crate) lde_primitive_root: FieldElement<F>,
     /// `trace_length * blowup_factor`.
     pub(crate) lde_domain_size: usize,
+    /// Bit-reversed twiddles of the `trace_length`-point FFT, shared by every coset
+    /// transform of the prover; empty for a verifier domain.
+    pub(crate) lde_twiddles: Vec<FieldElement<F>>,
 }
 
 /// Everything about a domain that does not require materialising it.
@@ -96,6 +99,7 @@ impl<F: IsFFTField> Domain<F> {
     fn from_scalars(
         scalars: DomainScalars<F>,
         lde_roots_of_unity_coset: Vec<FieldElement<F>>,
+        lde_twiddles: Vec<FieldElement<F>>,
     ) -> Self {
         Self {
             root_order: scalars.root_order,
@@ -106,6 +110,7 @@ impl<F: IsFFTField> Domain<F> {
             interpolation_domain_size: scalars.interpolation_domain_size,
             lde_primitive_root: scalars.lde_primitive_root,
             lde_domain_size: scalars.lde_domain_size,
+            lde_twiddles,
         }
     }
 
@@ -119,7 +124,12 @@ impl<F: IsFFTField> Domain<F> {
             scalars.lde_domain_size,
             &scalars.coset_offset,
         )?;
-        Ok(Self::from_scalars(scalars, lde_roots_of_unity_coset))
+        let lde_twiddles = get_twiddles::<F>(scalars.root_order as u64, RootsConfig::BitReverse)?;
+        Ok(Self::from_scalars(
+            scalars,
+            lde_roots_of_unity_coset,
+            lde_twiddles,
+        ))
     }
 
     fn lazy<A>(air: &A) -> Result<Self, ProvingError>
@@ -127,7 +137,7 @@ impl<F: IsFFTField> Domain<F> {
         A: AIR<Field = F> + ?Sized,
     {
         let scalars = domain_scalars(air)?;
-        Ok(Self::from_scalars(scalars, Vec::new()))
+        Ok(Self::from_scalars(scalars, Vec::new(), Vec::new()))
     }
 
     /// Number of points of the LDE domain, `trace_length * blowup_factor`.
